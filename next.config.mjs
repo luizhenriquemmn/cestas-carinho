@@ -1,11 +1,18 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  allowedDevOrigins: ['192.168.0.107'],
   typescript: {
     ignoreBuildErrors: true,
   },
   images: {
-    unoptimized: true,
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "oiywtsfirwkgfckrebup.supabase.co",
+        pathname: "/storage/v1/object/public/**",
+      },
+    ],
   },
-}
+};
 
-export default nextConfig
+export default nextConfig;

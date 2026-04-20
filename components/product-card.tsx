@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import { ShoppingBag, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -28,12 +27,10 @@ export function ProductCard({ product }: ProductCardProps) {
     <>
       <Card className="group overflow-hidden border-border/50 hover:border-primary/30 transition-all duration-300 hover:shadow-lg bg-card">
         <div className="relative aspect-square overflow-hidden">
-          <Image
+          <img
             src={product.image}
             alt={product.name}
-            fill
-            className="object-cover group-hover:scale-105 transition-transform duration-500"
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+            className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-foreground/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
           
