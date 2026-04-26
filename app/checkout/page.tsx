@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowLeft, ShoppingBag, Send, Trash2, Plus, Minus } from 'lucide-react';
@@ -8,14 +8,26 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCart } from '@/components/cart-context';
 import { useRouter } from 'next/navigation';
-
-// Número do WhatsApp do administrador (formato: 5511999999999)
-const WHATSAPP_NUMBER = '5511999999999';
+import { supabase } from '@/lib/supabase';
 
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, totalPrice, removeItem, updateQuantity, clearCart } = useCart();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [nomeLoja, setNomeLoja] = useState('');
+
+  useEffect(() => {
+    supabase
+      .from('configuracoes')
+      .select('chave, valor')
+      .in('chave', ['whatsapp', 'nome_loja'])
+      .then(({ data }) => {
+        const get = (chave: string) => data?.find((r) => r.chave === chave)?.valor ?? '';
+        setWhatsappNumber(get('whatsapp'));
+        setNomeLoja(get('nome_loja'));
+      });
+  }, []);
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -39,7 +51,7 @@ export default function CheckoutPage() {
   };
 
   const generateWhatsAppMessage = () => {
-    let message = `*Novo Pedido - Cestas Encantadas*\n\n`;
+    let message = `*Novo Pedido - ${nomeLoja}*\n\n`;
     message += `*Cliente:* ${formData.name}\n`;
     message += `*Telefone:* ${formData.phone}\n`;
     message += `*E-mail:* ${formData.email}\n`;
@@ -73,7 +85,7 @@ export default function CheckoutPage() {
     setIsSubmitting(true);
 
     const message = generateWhatsAppMessage();
-    const whatsappUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${message}`;
+    const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${message}`;
 
     // Abrir WhatsApp
     window.open(whatsappUrl, '_blank');
@@ -248,7 +260,7 @@ export default function CheckoutPage() {
                   type="submit"
                   size="lg"
                   className="w-full"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !whatsappNumber}
                 >
                   {isSubmitting ? (
                     'Enviando...'

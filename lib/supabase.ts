@@ -14,6 +14,7 @@ export type Produto = {
   categoria: string;
   foto_url: string;
   ativo: boolean;
+  itens: string[];
 };
 
 export type Cliente = {

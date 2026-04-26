@@ -14,7 +14,7 @@ function mapProduto(p: Produto): Product {
     price: p.preco,
     image: p.foto_url,
     category: p.categoria as Product['category'],
-    items: [],
+    items: p.itens ?? [],
   };
 }
 

@@ -1,34 +1,32 @@
 'use client';
 
-import { Coffee, Cake, Heart, Briefcase, Star, Calendar, Gift, ShoppingBag } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { Coffee, Cake, Heart, Briefcase, Gift, Star, Package, ShoppingBag } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type CategoryConfig = {
-  icon: LucideIcon;
-  color: string;
-  description: string;
+type Categoria = {
+  id: string;
+  nome: string;
+  descricao: string;
+  icone: string;
+  ativo: boolean;
 };
 
-const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
-  'Café da Manhã':       { icon: Coffee,    color: 'bg-primary/15 text-primary',             description: 'Cestas completas para começar o dia' },
-  'Aniversário':         { icon: Cake,      color: 'bg-accent/20 text-accent-foreground',     description: 'Celebre com cestas especiais' },
-  'Romântico':           { icon: Heart,     color: 'bg-rose-100 text-rose-600',               description: 'Para momentos a dois' },
-  'Corporativo':         { icon: Briefcase, color: 'bg-violet-100 text-violet-600',           description: 'Presentes empresariais' },
-  'Datas Especiais':     { icon: Star,      color: 'bg-rose-100 text-rose-600',               description: 'Para momentos inesquecíveis' },
-  'Datas Comemorativas': { icon: Calendar,  color: 'bg-orange-100 text-orange-600',           description: 'Comemore datas importantes' },
-  'Especial':            { icon: Gift,      color: 'bg-emerald-100 text-emerald-600',         description: 'Cestas únicas e especiais' },
+const ICON_MAP: Record<string, LucideIcon> = {
+  Coffee, Cake, Heart, Briefcase, Gift, Star, Package,
 };
 
-const DEFAULT_CONFIG: CategoryConfig = {
-  icon: ShoppingBag,
-  color: 'bg-muted text-muted-foreground',
-  description: 'Cestas especiais para você',
+const COLOR_MAP: Record<string, string> = {
+  Coffee:    'bg-primary/15 text-primary',
+  Cake:      'bg-accent/20 text-accent-foreground',
+  Heart:     'bg-rose-100 text-rose-600',
+  Briefcase: 'bg-violet-100 text-violet-600',
+  Gift:      'bg-emerald-100 text-emerald-600',
+  Star:      'bg-amber-100 text-amber-600',
+  Package:   'bg-muted text-muted-foreground',
 };
-
-function getConfig(name: string): CategoryConfig {
-  return CATEGORY_CONFIG[name] ?? DEFAULT_CONFIG;
-}
 
 interface CategoriesSectionProps {
   onCategorySelect?: (category: string | null) => void;
@@ -36,8 +34,21 @@ interface CategoriesSectionProps {
   availableCategories?: string[];
 }
 
-export function CategoriesSection({ onCategorySelect, selectedCategory, availableCategories }: CategoriesSectionProps) {
-  if (!availableCategories?.length) return null;
+export function CategoriesSection({ onCategorySelect, selectedCategory }: CategoriesSectionProps) {
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+
+  useEffect(() => {
+    supabase
+      .from('categorias')
+      .select('*')
+      .eq('ativo', true)
+      .order('nome')
+      .then(({ data }) => {
+        setCategorias(data ?? []);
+      });
+  }, []);
+
+  if (!categorias.length) return null;
 
   return (
     <section id="categorias" className="py-16 md:py-20 bg-secondary/30">
@@ -52,14 +63,15 @@ export function CategoriesSection({ onCategorySelect, selectedCategory, availabl
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-          {availableCategories.map((name) => {
-            const { icon: Icon, color, description } = getConfig(name);
-            const isSelected = selectedCategory === name;
+          {categorias.map((cat) => {
+            const Icon = ICON_MAP[cat.icone] ?? ShoppingBag;
+            const color = COLOR_MAP[cat.icone] ?? 'bg-muted text-muted-foreground';
+            const isSelected = selectedCategory === cat.nome;
 
             return (
               <button
-                key={name}
-                onClick={() => onCategorySelect?.(isSelected ? null : name)}
+                key={cat.id}
+                onClick={() => onCategorySelect?.(isSelected ? null : cat.nome)}
                 className={cn(
                   'group p-6 rounded-2xl transition-all duration-300 text-left',
                   'bg-card hover:shadow-lg hover:-translate-y-1',
@@ -75,8 +87,8 @@ export function CategoriesSection({ onCategorySelect, selectedCategory, availabl
                 >
                   <Icon className="w-7 h-7" />
                 </div>
-                <h3 className="font-semibold text-foreground text-lg">{name}</h3>
-                <p className="text-muted-foreground text-sm mt-1">{description}</p>
+                <h3 className="font-semibold text-foreground text-lg">{cat.nome}</h3>
+                <p className="text-muted-foreground text-sm mt-1">{cat.descricao}</p>
               </button>
             );
           })}
