@@ -34,7 +34,7 @@ interface CategoriesSectionProps {
   availableCategories?: string[];
 }
 
-export function CategoriesSection({ onCategorySelect, selectedCategory }: CategoriesSectionProps) {
+export function CategoriesSection({ onCategorySelect, selectedCategory, availableCategories }: CategoriesSectionProps) {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
 
   useEffect(() => {
@@ -48,7 +48,11 @@ export function CategoriesSection({ onCategorySelect, selectedCategory }: Catego
       });
   }, []);
 
-  if (!categorias.length) return null;
+  const visibleCategorias = availableCategories !== undefined
+    ? categorias.filter(cat => availableCategories.includes(cat.nome))
+    : categorias;
+
+  if (!visibleCategorias.length) return null;
 
   return (
     <section id="categorias" className="py-16 md:py-20 bg-secondary/30">
@@ -63,7 +67,7 @@ export function CategoriesSection({ onCategorySelect, selectedCategory }: Catego
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-          {categorias.map((cat) => {
+          {visibleCategorias.map((cat) => {
             const Icon = ICON_MAP[cat.icone] ?? ShoppingBag;
             const color = COLOR_MAP[cat.icone] ?? 'bg-muted text-muted-foreground';
             const isSelected = selectedCategory === cat.nome;

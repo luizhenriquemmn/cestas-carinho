@@ -18,8 +18,12 @@ function mapProduto(p: Produto): Product {
   };
 }
 
-export function ProductsSection() {
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+interface ProductsSectionProps {
+  selectedCategory: string | null;
+  onCategorySelect: (category: string | null) => void;
+}
+
+export function ProductsSection({ selectedCategory, onCategorySelect }: ProductsSectionProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -41,7 +45,9 @@ export function ProductsSection() {
     fetchProducts();
   }, []);
 
-  const availableCategories = [...new Set(products.map((p) => p.category))];
+  const availableCategories = loading
+    ? undefined
+    : [...new Set(products.map((p) => p.category))];
 
   const filteredProducts = selectedCategory
     ? products.filter((p) => p.category === selectedCategory)
@@ -50,7 +56,7 @@ export function ProductsSection() {
   return (
     <>
       <CategoriesSection
-        onCategorySelect={setSelectedCategory}
+        onCategorySelect={onCategorySelect}
         selectedCategory={selectedCategory}
         availableCategories={availableCategories}
       />
@@ -66,7 +72,7 @@ export function ProductsSection() {
             </p>
             {selectedCategory && (
               <button
-                onClick={() => setSelectedCategory(null)}
+                onClick={() => onCategorySelect(null)}
                 className="mt-4 text-primary hover:text-primary/80 underline text-sm"
               >
                 Ver todos os produtos

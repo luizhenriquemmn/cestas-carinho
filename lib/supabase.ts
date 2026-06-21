@@ -17,11 +17,20 @@ export type Produto = {
   itens: string[];
 };
 
+export type Categoria = {
+  id: string;
+  nome: string;
+  descricao: string;
+  icone: string;
+  ativo: boolean;
+};
+
 export type Cliente = {
   id: string;
   nome: string;
   telefone: string;
   email: string;
+  user_id?: string | null;
 };
 
 export type Pedido = {
@@ -31,6 +40,11 @@ export type Pedido = {
   status: string;
   observacao: string;
   created_at: string;
+  tipo_entrega: 'retirada' | 'entrega';
+  taxa_entrega: number;
+  endereco_entrega: string | null;
+  data_entrega: string | null;
+  horario_entrega: string | null;
 };
 
 export type PedidoItem = {
@@ -39,4 +53,9 @@ export type PedidoItem = {
   produto_id: string;
   quantidade: number;
   preco_unitario: number;
+};
+
+export type PedidoComCliente = Pedido & {
+  clientes: Pick<Cliente, 'nome' | 'telefone' | 'email'> | null;
+  pedido_itens: (PedidoItem & { produtos: Pick<Produto, 'nome' | 'preco'> | null })[];
 };
