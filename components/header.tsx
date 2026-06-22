@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { Menu, X, ShoppingBag } from 'lucide-react';
+import { Menu, X, ShoppingBag, User, LogOut, ClipboardList, UserCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/components/cart-context';
 import { cn } from '@/lib/utils';
+import type { ClienteSession } from '@/lib/session';
 
 const navLinks = [
   { href: '/', label: 'Início' },
@@ -17,7 +18,32 @@ const navLinks = [
 
 export function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [cliente, setCliente] = useState<ClienteSession | null>(null);
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
   const { totalItems, setIsCartOpen } = useCart();
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setCliente(data));
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsAccountOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  async function handleSignOut() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    setCliente(null);
+    setIsAccountOpen(false);
+  }
 
   return (
     <header className="sticky top-0 z-50 bg-card/95 backdrop-blur-sm border-b border-border">
@@ -43,8 +69,60 @@ export function Header() {
             ))}
           </nav>
 
-          {/* Cart Button */}
+          {/* Right buttons */}
           <div className="flex items-center gap-2">
+            {/* Customer account */}
+            {cliente ? (
+              <div className="relative" ref={dropdownRef}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsAccountOpen((v) => !v)}
+                  aria-label="Minha conta"
+                >
+                  <User className="h-5 w-5" />
+                </Button>
+                {isAccountOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-44 bg-card rounded-xl border border-border shadow-lg py-1 z-50">
+                    <div className="px-4 py-2 border-b border-border">
+                      <p className="text-xs text-muted-foreground truncate">{cliente.nome}</p>
+                    </div>
+                    <Link
+                      href="/conta/pedidos"
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-secondary transition-colors"
+                      onClick={() => setIsAccountOpen(false)}
+                    >
+                      <ClipboardList className="w-4 h-4 text-muted-foreground" />
+                      Meus Pedidos
+                    </Link>
+                    <Link
+                      href="/conta/perfil"
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-foreground hover:bg-secondary transition-colors"
+                      onClick={() => setIsAccountOpen(false)}
+                    >
+                      <UserCircle className="w-4 h-4 text-muted-foreground" />
+                      Meu Perfil
+                    </Link>
+                    <button
+                      onClick={handleSignOut}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-destructive hover:bg-secondary transition-colors"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Sair
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Link href="/conta/login">
+                <Button variant="ghost" size="sm" className="hidden sm:flex items-center gap-1.5">
+                  <User className="h-4 w-4" />
+                  Entrar
+                </Button>
+              </Link>
+            )}
+
+            {/* Cart */}
             <Button
               variant="outline"
               size="icon"
@@ -77,7 +155,7 @@ export function Header() {
         <nav
           className={cn(
             'md:hidden overflow-hidden transition-all duration-300',
-            isMobileMenuOpen ? 'max-h-64 pb-4' : 'max-h-0'
+            isMobileMenuOpen ? 'max-h-80 pb-4' : 'max-h-0'
           )}
         >
           <div className="flex flex-col gap-2">
@@ -91,6 +169,42 @@ export function Header() {
                 {link.label}
               </Link>
             ))}
+            {cliente ? (
+              <>
+                <Link
+                  href="/conta/pedidos"
+                  className="flex items-center gap-2 text-foreground/80 hover:text-primary hover:bg-secondary transition-colors py-2 px-4 rounded-lg"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <ClipboardList className="w-4 h-4" />
+                  Meus Pedidos
+                </Link>
+                <Link
+                  href="/conta/perfil"
+                  className="flex items-center gap-2 text-foreground/80 hover:text-primary hover:bg-secondary transition-colors py-2 px-4 rounded-lg"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <UserCircle className="w-4 h-4" />
+                  Meu Perfil
+                </Link>
+                <button
+                  className="flex items-center gap-2 text-destructive hover:bg-secondary transition-colors py-2 px-4 rounded-lg text-left"
+                  onClick={() => { handleSignOut(); setIsMobileMenuOpen(false); }}
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sair
+                </button>
+              </>
+            ) : (
+              <Link
+                href="/conta/login"
+                className="flex items-center gap-2 text-foreground/80 hover:text-primary hover:bg-secondary transition-colors py-2 px-4 rounded-lg"
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                <User className="w-4 h-4" />
+                Entrar / Criar conta
+              </Link>
+            )}
           </div>
         </nav>
       </div>

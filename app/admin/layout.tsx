@@ -6,13 +6,14 @@ import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { LayoutDashboard, Package, ShoppingCart, Settings, LogOut, Menu, X, Tag } from "lucide-react"
+import { LayoutDashboard, Package, ShoppingCart, Settings, LogOut, Menu, X, Tag, Users } from "lucide-react"
 
 const navItems = [
   { href: "/admin", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/admin/produtos", icon: Package, label: "Produtos" },
   { href: "/admin/categorias", icon: Tag, label: "Categorias" },
   { href: "/admin/pedidos", icon: ShoppingCart, label: "Pedidos" },
+  { href: "/admin/usuarios", icon: Users, label: "Usuários" },
   { href: "/admin/configuracoes", icon: Settings, label: "Configurações" },
 ]
 
@@ -23,12 +24,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session && pathname !== "/admin/login") {
         router.replace("/admin/login")
-      } else {
-        setLoading(false)
+        return
       }
+      if (session) {
+        const { data } = await supabase
+          .from("admin_users")
+          .select("ativo")
+          .eq("email", session.user.email)
+          .maybeSingle()
+
+        if (!data?.ativo) {
+          await supabase.auth.signOut()
+          router.replace("/")
+          return
+        }
+      }
+      setLoading(false)
     })
   }, [router, pathname])
 

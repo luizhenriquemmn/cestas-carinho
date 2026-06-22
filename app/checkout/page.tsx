@@ -3,31 +3,29 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, ShoppingBag, Send, Trash2, Plus, Minus } from 'lucide-react';
+import { ArrowLeft, ShoppingBag, Send, Trash2, Plus, Minus, Truck, MapPin, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
 import { useCart } from '@/components/cart-context';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { cn } from '@/lib/utils';
+
+type TipoEntrega = 'entrega' | 'retirada';
 
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, totalPrice, removeItem, updateQuantity, clearCart } = useCart();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSendingWpp, setIsSendingWpp] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [nomeLoja, setNomeLoja] = useState('');
+  const [tipoEntrega, setTipoEntrega] = useState<TipoEntrega>('entrega');
 
-  useEffect(() => {
-    supabase
-      .from('configuracoes')
-      .select('chave, valor')
-      .in('chave', ['whatsapp', 'nome_loja'])
-      .then(({ data }) => {
-        const get = (chave: string) => data?.find((r) => r.chave === chave)?.valor ?? '';
-        setWhatsappNumber(get('whatsapp'));
-        setNomeLoja(get('nome_loja'));
-      });
-  }, []);
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -38,63 +36,159 @@ export default function CheckoutPage() {
     observations: '',
   });
 
-  const formatPrice = (price: number) => {
-    return price.toLocaleString('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
+  useEffect(() => {
+    // Fetch store config
+    supabase
+      .from('configuracoes')
+      .select('chave, valor')
+      .in('chave', ['whatsapp', 'nome_loja'])
+      .then(({ data }) => {
+        const get = (chave: string) => data?.find((r) => r.chave === chave)?.valor ?? '';
+        setWhatsappNumber(get('whatsapp'));
+        setNomeLoja(get('nome_loja'));
+      });
+
+    // Pre-fill if customer is logged in
+    fetch('/api/conta/perfil').then(async (res) => {
+      if (!res.ok) return;
+      const cliente = await res.json();
+      if (cliente) {
+        setFormData((f) => ({
+          ...f,
+          name: cliente.nome ?? f.name,
+          phone: cliente.telefone ?? f.phone,
+          email: cliente.email ?? f.email,
+        }));
+      }
     });
-  };
+  }, []);
+
+  const formatPrice = (price: number) =>
+    price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  async function saveOrderToDb(): Promise<string | null> {
+    let clienteId: string | null = null;
+
+    // Verificar se cliente está logado no sistema
+    const meRes = await fetch('/api/auth/me');
+    if (meRes.ok) {
+      const session = await meRes.json();
+      clienteId = session.id;
+    }
+
+    if (!clienteId) {
+      const { data: byPhone } = await supabase
+        .from('clientes')
+        .select('id')
+        .eq('telefone', formData.phone)
+        .maybeSingle();
+      clienteId = byPhone?.id ?? null;
+    }
+
+    if (!clienteId) {
+      const { data: newCliente, error: clienteErr } = await supabase
+        .from('clientes')
+        .insert({
+          nome: formData.name,
+          telefone: formData.phone,
+          email: formData.email,
+        })
+        .select('id')
+        .single();
+      if (clienteErr || !newCliente) return null;
+      clienteId = newCliente.id;
+    }
+
+    const { data: pedido, error: pedidoErr } = await supabase
+      .from('pedidos')
+      .insert({
+        cliente_id: clienteId,
+        total: totalPrice,
+        status: 'aguardando_confirmacao',
+        observacao: formData.observations,
+        tipo_entrega: tipoEntrega,
+        taxa_entrega: 0,
+        endereco_entrega: tipoEntrega === 'entrega' ? formData.address : null,
+        data_entrega: formData.deliveryDate || null,
+        horario_entrega: formData.deliveryTime || null,
+      })
+      .select('id')
+      .single();
+
+    if (pedidoErr || !pedido) return null;
+
+    const { error: itemsErr } = await supabase.from('pedido_itens').insert(
+      items.map((item) => ({
+        pedido_id: pedido.id,
+        produto_id: item.product.id,
+        quantidade: item.quantity,
+        preco_unitario: item.product.price,
+      }))
+    );
+
+    if (itemsErr) {
+      console.error('Erro ao salvar itens do pedido:', itemsErr.message);
+      // Pedido foi criado — retornar o id mesmo assim para não bloquear o cliente
+      // O admin verá o pedido sem itens e poderá corrigir
+    }
+    return pedido.id;
+  }
+
   const generateWhatsAppMessage = () => {
+    const tipoLabel = tipoEntrega === 'retirada' ? 'Retirada no local' : 'Entrega a domicílio';
     let message = `*Novo Pedido - ${nomeLoja}*\n\n`;
     message += `*Cliente:* ${formData.name}\n`;
     message += `*Telefone:* ${formData.phone}\n`;
     message += `*E-mail:* ${formData.email}\n`;
-    message += `*Endereço de entrega:* ${formData.address}\n`;
-    message += `*Data de entrega:* ${formData.deliveryDate}\n`;
-    message += `*Horário preferido:* ${formData.deliveryTime}\n\n`;
-    message += `*Itens do Pedido:*\n`;
-    message += `───────────────\n`;
+    message += `*Tipo:* ${tipoLabel}\n`;
+    if (tipoEntrega === 'entrega') {
+      message += `*Endereço:* ${formData.address}\n`;
+    }
+    if (formData.deliveryDate) message += `*Data:* ${formData.deliveryDate}\n`;
+    if (formData.deliveryTime) message += `*Horário:* ${formData.deliveryTime}\n`;
+    message += `\n*Itens do Pedido:*\n───────────────\n`;
 
     items.forEach((item) => {
       message += `\n• ${item.product.name}\n`;
       message += `  Qtd: ${item.quantity} x ${formatPrice(item.product.price)}\n`;
       message += `  Subtotal: ${formatPrice(item.product.price * item.quantity)}\n`;
-      if (item.observation) {
-        message += `  Obs: ${item.observation}\n`;
-      }
+      if (item.observation) message += `  Obs: ${item.observation}\n`;
     });
 
-    message += `\n───────────────\n`;
-    message += `*TOTAL: ${formatPrice(totalPrice)}*\n`;
-
-    if (formData.observations) {
-      message += `\n*Observações gerais:* ${formData.observations}`;
-    }
-
+    message += `\n───────────────\n*TOTAL: ${formatPrice(totalPrice)}*\n`;
+    if (formData.observations) message += `\n*Observações:* ${formData.observations}`;
     return encodeURIComponent(message);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSaveOrder = async () => {
+    if (!formData.name || !formData.phone || !formData.email) return;
+    setSaveError('');
+    setIsSaving(true);
+    const id = await saveOrderToDb();
+    setIsSaving(false);
+    if (id) {
+      clearCart();
+      router.push('/checkout/success?saved=true');
+    } else {
+      setSaveError('Não foi possível salvar o pedido. Tente novamente.');
+    }
+  };
+
+  const handleWhatsApp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
-
+    setIsSendingWpp(true);
+    await saveOrderToDb();
     const message = generateWhatsAppMessage();
-    const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${message}`;
-
-    // Abrir WhatsApp
-    window.open(whatsappUrl, '_blank');
-
-    // Limpar carrinho e redirecionar
+    window.open(`https://wa.me/${whatsappNumber}?text=${message}`, '_blank');
     setTimeout(() => {
       clearCart();
       router.push('/checkout/success');
-    }, 1000);
+    }, 500);
   };
 
   if (items.length === 0) {
@@ -119,9 +213,11 @@ export default function CheckoutPage() {
     );
   }
 
+  const formValid = !!formData.name && !!formData.phone && !!formData.email &&
+    (tipoEntrega === 'retirada' || !!formData.address);
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="sticky top-0 z-50 bg-card/95 backdrop-blur-sm border-b border-border">
         <div className="container mx-auto px-4">
           <div className="flex items-center h-16">
@@ -149,7 +245,7 @@ export default function CheckoutPage() {
                 Seus Dados
               </h2>
 
-              <form onSubmit={handleSubmit} className="space-y-5">
+              <form onSubmit={handleWhatsApp} className="space-y-5">
                 <div>
                   <label htmlFor="name" className="block text-sm font-medium text-foreground mb-2">
                     Nome completo *
@@ -196,31 +292,75 @@ export default function CheckoutPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label htmlFor="address" className="block text-sm font-medium text-foreground mb-2">
-                    Endereço de entrega *
-                  </label>
-                  <Input
-                    id="address"
-                    name="address"
-                    type="text"
-                    required
-                    value={formData.address}
-                    onChange={handleInputChange}
-                    placeholder="Rua, número, bairro, cidade"
-                  />
+                {/* Tipo de entrega */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium text-foreground">Tipo de entrega *</Label>
+                  <RadioGroup
+                    value={tipoEntrega}
+                    onValueChange={(v) => setTipoEntrega(v as TipoEntrega)}
+                    className="grid grid-cols-2 gap-3"
+                  >
+                    <Label
+                      htmlFor="entrega"
+                      className={cn(
+                        'flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all',
+                        tipoEntrega === 'entrega'
+                          ? 'border-primary bg-primary/5 text-primary'
+                          : 'border-border hover:border-primary/50'
+                      )}
+                    >
+                      <RadioGroupItem value="entrega" id="entrega" className="sr-only" />
+                      <Truck className="w-5 h-5 shrink-0" />
+                      <div>
+                        <p className="font-medium text-sm">Entrega</p>
+                        <p className="text-xs text-muted-foreground">No seu endereço</p>
+                      </div>
+                    </Label>
+                    <Label
+                      htmlFor="retirada"
+                      className={cn(
+                        'flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all',
+                        tipoEntrega === 'retirada'
+                          ? 'border-primary bg-primary/5 text-primary'
+                          : 'border-border hover:border-primary/50'
+                      )}
+                    >
+                      <RadioGroupItem value="retirada" id="retirada" className="sr-only" />
+                      <MapPin className="w-5 h-5 shrink-0" />
+                      <div>
+                        <p className="font-medium text-sm">Retirada</p>
+                        <p className="text-xs text-muted-foreground">No local</p>
+                      </div>
+                    </Label>
+                  </RadioGroup>
                 </div>
+
+                {tipoEntrega === 'entrega' && (
+                  <div>
+                    <label htmlFor="address" className="block text-sm font-medium text-foreground mb-2">
+                      Endereço de entrega *
+                    </label>
+                    <Input
+                      id="address"
+                      name="address"
+                      type="text"
+                      required
+                      value={formData.address}
+                      onChange={handleInputChange}
+                      placeholder="Rua, número, bairro, cidade"
+                    />
+                  </div>
+                )}
 
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="deliveryDate" className="block text-sm font-medium text-foreground mb-2">
-                      Data de entrega *
+                      Data desejada
                     </label>
                     <Input
                       id="deliveryDate"
                       name="deliveryDate"
                       type="date"
-                      required
                       value={formData.deliveryDate}
                       onChange={handleInputChange}
                       min={new Date().toISOString().split('T')[0]}
@@ -228,13 +368,12 @@ export default function CheckoutPage() {
                   </div>
                   <div>
                     <label htmlFor="deliveryTime" className="block text-sm font-medium text-foreground mb-2">
-                      Horário preferido *
+                      Horário preferido
                     </label>
                     <Input
                       id="deliveryTime"
                       name="deliveryTime"
                       type="time"
-                      required
                       value={formData.deliveryTime}
                       onChange={handleInputChange}
                     />
@@ -256,24 +395,49 @@ export default function CheckoutPage() {
                   />
                 </div>
 
-                <Button
-                  type="submit"
-                  size="lg"
-                  className="w-full"
-                  disabled={isSubmitting || !whatsappNumber}
-                >
-                  {isSubmitting ? (
-                    'Enviando...'
-                  ) : (
-                    <>
-                      <Send className="mr-2 h-5 w-5" />
-                      Enviar Pedido via WhatsApp
-                    </>
-                  )}
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    className="flex-1"
+                    disabled={isSaving || !formValid}
+                    onClick={handleSaveOrder}
+                  >
+                    {isSaving ? (
+                      'Salvando...'
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-5 w-5" />
+                        Salvar Pedido
+                      </>
+                    )}
+                  </Button>
+
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="flex-1"
+                    disabled={isSendingWpp || !whatsappNumber || !formValid}
+                  >
+                    {isSendingWpp ? (
+                      'Enviando...'
+                    ) : (
+                      <>
+                        <Send className="mr-2 h-5 w-5" />
+                        Enviar via WhatsApp
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {saveError && (
+                  <p className="text-center text-sm text-destructive">{saveError}</p>
+                )}
 
                 <p className="text-center text-muted-foreground text-xs">
-                  Ao clicar, você será redirecionado para o WhatsApp para confirmar seu pedido
+                  "Salvar Pedido" registra seu pedido sem abrir o WhatsApp.
+                  "Enviar via WhatsApp" salva e abre o WhatsApp para confirmar.
                 </p>
               </form>
             </div>
@@ -292,7 +456,7 @@ export default function CheckoutPage() {
                     key={item.product.id}
                     className="flex gap-4 p-4 bg-secondary/50 rounded-xl"
                   >
-                    <div className="relative w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
+                    <div className="relative w-20 h-20 rounded-lg overflow-hidden shrink-0">
                       <Image
                         src={item.product.image}
                         alt={item.product.name}
@@ -320,9 +484,7 @@ export default function CheckoutPage() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8"
-                            onClick={() =>
-                              updateQuantity(item.product.id, item.quantity - 1)
-                            }
+                            onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
                           >
                             <Minus className="h-3 w-3" />
                           </Button>
@@ -334,9 +496,7 @@ export default function CheckoutPage() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8"
-                            onClick={() =>
-                              updateQuantity(item.product.id, item.quantity + 1)
-                            }
+                            onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
                           >
                             <Plus className="h-3 w-3" />
                           </Button>
@@ -363,7 +523,9 @@ export default function CheckoutPage() {
                 </div>
                 <div className="flex items-center justify-between text-muted-foreground">
                   <span>Entrega</span>
-                  <span className="text-primary">A combinar</span>
+                  <span className="text-primary">
+                    {tipoEntrega === 'retirada' ? 'Gratuita (retirada)' : 'A combinar'}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between text-xl font-bold text-foreground pt-3 border-t border-border">
                   <span>Total</span>
