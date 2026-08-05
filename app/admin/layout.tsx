@@ -17,6 +17,8 @@ const navItems = [
   { href: "/admin/configuracoes", icon: Settings, label: "Configurações" },
 ]
 
+const publicAdminPaths = ["/admin/login", "/admin/recuperar-senha", "/admin/redefinir-senha"]
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -25,7 +27,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session && pathname !== "/admin/login") {
+      if (!session && !publicAdminPaths.includes(pathname)) {
         router.replace("/admin/login")
         return
       }
@@ -51,7 +53,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     router.replace("/admin/login")
   }
 
-  if (pathname === "/admin/login") {
+  if (publicAdminPaths.includes(pathname)) {
     return <>{children}</>
   }
 

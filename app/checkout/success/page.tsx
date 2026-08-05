@@ -21,7 +21,7 @@ function SuccessContent() {
         </div>
 
         <h1 className="font-serif text-3xl font-bold text-foreground mb-4">
-          {saved ? 'Pedido Salvo!' : 'Pedido Enviado!'}
+          {saved ? 'Pedido Realizado!' : 'Pedido Enviado!'}
         </h1>
 
         <p className="text-muted-foreground leading-relaxed mb-8">

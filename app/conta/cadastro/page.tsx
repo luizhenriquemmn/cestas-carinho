@@ -25,8 +25,8 @@ export default function CadastroPage() {
       setError('As senhas não conferem.');
       return;
     }
-    if (form.password.length < 6) {
-      setError('A senha deve ter pelo menos 6 caracteres.');
+    if (form.password.length < 8) {
+      setError('A senha deve ter pelo menos 8 caracteres.');
       return;
     }
 
@@ -77,7 +77,7 @@ export default function CadastroPage() {
 
         <div className="space-y-2">
           <Label htmlFor="password">Senha</Label>
-          <Input id="password" type="password" required minLength={6} value={form.password} onChange={(e) => set('password', e.target.value)} placeholder="Mínimo 6 caracteres" />
+          <Input id="password" type="password" required minLength={8} value={form.password} onChange={(e) => set('password', e.target.value)} placeholder="Mínimo 8 caracteres" />
         </div>
 
         <div className="space-y-2">

@@ -45,6 +45,14 @@ export type Pedido = {
   endereco_entrega: string | null;
   data_entrega: string | null;
   horario_entrega: string | null;
+  subtotal?: number;
+  desconto_tipo?: 'valor' | 'percentual' | null;
+  desconto_informado?: number;
+  desconto_valor?: number;
+  desconto_motivo?: string | null;
+  decisao_comentario?: string | null;
+  decisao_em?: string | null;
+  decisao_por_email?: string | null;
 };
 
 export type PedidoItem = {

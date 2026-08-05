@@ -71,75 +71,31 @@ export default function CheckoutPage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  async function saveOrderToDb(): Promise<string | null> {
-    let clienteId: string | null = null;
+  async function saveOrderToDb(): Promise<{ id: string; total: number } | null> {
+    const response = await fetch('/api/pedidos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer: { name: formData.name, phone: formData.phone, email: formData.email },
+        items: items.map((item) => ({ productId: item.product.id, quantity: item.quantity })),
+        deliveryType: tipoEntrega,
+        deliveryAddress: tipoEntrega === 'entrega' ? formData.address : undefined,
+        deliveryDate: formData.deliveryDate || undefined,
+        deliveryTime: formData.deliveryTime || undefined,
+        observations: formData.observations || undefined,
+      }),
+    });
 
-    // Verificar se cliente está logado no sistema
-    const meRes = await fetch('/api/auth/me');
-    if (meRes.ok) {
-      const session = await meRes.json();
-      clienteId = session.id;
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      setSaveError(body?.error ?? 'Não foi possível salvar o pedido. Tente novamente.');
+      return null;
     }
 
-    if (!clienteId) {
-      const { data: byPhone } = await supabase
-        .from('clientes')
-        .select('id')
-        .eq('telefone', formData.phone)
-        .maybeSingle();
-      clienteId = byPhone?.id ?? null;
-    }
-
-    if (!clienteId) {
-      const { data: newCliente, error: clienteErr } = await supabase
-        .from('clientes')
-        .insert({
-          nome: formData.name,
-          telefone: formData.phone,
-          email: formData.email,
-        })
-        .select('id')
-        .single();
-      if (clienteErr || !newCliente) return null;
-      clienteId = newCliente.id;
-    }
-
-    const { data: pedido, error: pedidoErr } = await supabase
-      .from('pedidos')
-      .insert({
-        cliente_id: clienteId,
-        total: totalPrice,
-        status: 'aguardando_confirmacao',
-        observacao: formData.observations,
-        tipo_entrega: tipoEntrega,
-        taxa_entrega: 0,
-        endereco_entrega: tipoEntrega === 'entrega' ? formData.address : null,
-        data_entrega: formData.deliveryDate || null,
-        horario_entrega: formData.deliveryTime || null,
-      })
-      .select('id')
-      .single();
-
-    if (pedidoErr || !pedido) return null;
-
-    const { error: itemsErr } = await supabase.from('pedido_itens').insert(
-      items.map((item) => ({
-        pedido_id: pedido.id,
-        produto_id: item.product.id,
-        quantidade: item.quantity,
-        preco_unitario: item.product.price,
-      }))
-    );
-
-    if (itemsErr) {
-      console.error('Erro ao salvar itens do pedido:', itemsErr.message);
-      // Pedido foi criado — retornar o id mesmo assim para não bloquear o cliente
-      // O admin verá o pedido sem itens e poderá corrigir
-    }
-    return pedido.id;
+    return response.json();
   }
 
-  const generateWhatsAppMessage = () => {
+  const generateWhatsAppMessage = (confirmedTotal = totalPrice) => {
     const tipoLabel = tipoEntrega === 'retirada' ? 'Retirada no local' : 'Entrega a domicílio';
     let message = `*Novo Pedido - ${nomeLoja}*\n\n`;
     message += `*Cliente:* ${formData.name}\n`;
@@ -160,7 +116,7 @@ export default function CheckoutPage() {
       if (item.observation) message += `  Obs: ${item.observation}\n`;
     });
 
-    message += `\n───────────────\n*TOTAL: ${formatPrice(totalPrice)}*\n`;
+    message += `\n───────────────\n*TOTAL: ${formatPrice(confirmedTotal)}*\n`;
     if (formData.observations) message += `\n*Observações:* ${formData.observations}`;
     return encodeURIComponent(message);
   };
@@ -169,9 +125,9 @@ export default function CheckoutPage() {
     if (!formData.name || !formData.phone || !formData.email) return;
     setSaveError('');
     setIsSaving(true);
-    const id = await saveOrderToDb();
+    const savedOrder = await saveOrderToDb();
     setIsSaving(false);
-    if (id) {
+    if (savedOrder) {
       clearCart();
       router.push('/checkout/success?saved=true');
     } else {
@@ -181,9 +137,12 @@ export default function CheckoutPage() {
 
   const handleWhatsApp = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSaveError('');
     setIsSendingWpp(true);
-    await saveOrderToDb();
-    const message = generateWhatsAppMessage();
+    const savedOrder = await saveOrderToDb();
+    setIsSendingWpp(false);
+    if (!savedOrder) return;
+    const message = generateWhatsAppMessage(savedOrder.total);
     window.open(`https://wa.me/${whatsappNumber}?text=${message}`, '_blank');
     setTimeout(() => {
       clearCart();
@@ -409,7 +368,7 @@ export default function CheckoutPage() {
                     ) : (
                       <>
                         <Save className="mr-2 h-5 w-5" />
-                        Salvar Pedido
+                        Realizar Pedido
                       </>
                     )}
                   </Button>
@@ -436,7 +395,7 @@ export default function CheckoutPage() {
                 )}
 
                 <p className="text-center text-muted-foreground text-xs">
-                  "Salvar Pedido" registra seu pedido sem abrir o WhatsApp.
+                  "Realizar Pedido" registra seu pedido sem abrir o WhatsApp.
                   "Enviar via WhatsApp" salva e abre o WhatsApp para confirmar.
                 </p>
               </form>
