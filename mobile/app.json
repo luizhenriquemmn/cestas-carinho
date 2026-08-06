@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Cestas & Carinho Admin",
-    "slug": "cestas-carinho-admin",
+    "slug": "cestasandcarinho",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/brand-icon.png",
@@ -43,6 +43,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0cc91ac9-3823-42f0-b9be-da9aa967688a"
+      }
+    },
+    "owner": "cestas-and-carinho"
   }
 }
