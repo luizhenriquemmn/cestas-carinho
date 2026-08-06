@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getAdminUser } from "@/lib/admin-auth";
 
 const updateSchema = z.object({
   status: z.enum(["aguardando_confirmacao", "confirmado", "em_preparo", "saiu_para_entrega", "entregue", "cancelado", "rejeitado"]),
@@ -17,23 +17,8 @@ const updateSchema = z.object({
   }
 });
 
-async function getAdmin(request: NextRequest) {
-  const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  if (!token) return null;
-  const authClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { persistSession: false } },
-  );
-  const { data: { user } } = await authClient.auth.getUser(token);
-  if (!user?.email) return null;
-  const { data: admin } = await supabaseAdmin
-    .from("admin_users").select("ativo").eq("email", user.email).maybeSingle();
-  return admin?.ativo ? user : null;
-}
-
 export async function PATCH(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const admin = await getAdmin(request);
+  const admin = await getAdminUser(request.headers.get("authorization"));
   if (!admin) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
 
   const parsed = updateSchema.safeParse(await request.json().catch(() => null));
@@ -114,7 +99,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
 }
 
 export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  const admin = await getAdmin(request);
+  const admin = await getAdminUser(request.headers.get("authorization"));
   if (!admin) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   const body = await request.json().catch(() => null);
   const parsed = z.object({ comment: z.string().trim().max(1000).optional().default("") }).safeParse(body);

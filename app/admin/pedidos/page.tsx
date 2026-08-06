@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react"
 import type { TableColumnsType } from "antd"
-import { Button, DatePicker, Input, Modal, Select, Space, Table, Tag } from "antd"
-import { Ban, CircleX, Save, Trash2 } from "lucide-react"
+import { Button, Card, DatePicker, Image, Input, Modal, Select, Space, Statistic, Table, Tag } from "antd"
+import { Ban, CircleDollarSign, CircleX, Eye, FileSpreadsheet, PackageCheck, Save, ShoppingCart, Trash2 } from "lucide-react"
 import dayjs, { type Dayjs } from "dayjs"
 import { supabase, type PedidoComCliente } from "@/lib/supabase"
 
@@ -60,11 +60,12 @@ export default function PedidosPage() {
   const [decision, setDecision] = useState<{ pedido: PedidoComCliente; action: DecisionAction } | null>(null)
   const [decisionComment, setDecisionComment] = useState("")
   const [decisionLoading, setDecisionLoading] = useState(false)
+  const [productDetail, setProductDetail] = useState<PedidoComCliente["pedido_itens"][number] | null>(null)
 
   useEffect(() => {
     supabase
       .from("pedidos")
-      .select("*, clientes(nome, telefone, email), pedido_itens(*, produtos(nome, preco))")
+      .select("*, clientes(nome, telefone, email), pedido_itens(*, produtos(nome, preco, descricao, foto_url, categoria, itens))")
       .order("created_at", { ascending: false })
       .then(({ data }) => {
         const rows = (data as PedidoComCliente[]) ?? []
@@ -177,6 +178,53 @@ export default function PedidosPage() {
     return matchesSearch && matchesStatus && matchesDelivery && matchesDate
   }), [pedidos, search, statusFilter, deliveryFilter, dateRange])
 
+  const dashboard = useMemo(() => {
+    const valid = filteredPedidos.filter((pedido) => !["cancelado", "rejeitado"].includes(pedido.status))
+    const revenue = valid.reduce((sum, pedido) => sum + Number(pedido.total), 0)
+    const itemCount = valid.reduce((sum, pedido) => sum + pedido.pedido_itens.reduce((itemSum, item) => itemSum + item.quantidade, 0), 0)
+    return {
+      total: filteredPedidos.length,
+      revenue,
+      average: valid.length ? revenue / valid.length : 0,
+      delivered: filteredPedidos.filter((pedido) => pedido.status === "entregue").length,
+      pending: filteredPedidos.filter((pedido) => pedido.status === "aguardando_confirmacao").length,
+      itemCount,
+    }
+  }, [filteredPedidos])
+
+  async function exportOrders() {
+    const XLSX = await import("xlsx")
+    const rows = filteredPedidos.flatMap((pedido) => {
+      if (!pedido.pedido_itens.length) return [{
+        Pedido: pedido.id, Data: dayjs(pedido.created_at).format("DD/MM/YYYY"), Cliente: pedido.clientes?.nome ?? "",
+        Telefone: pedido.clientes?.telefone ?? "", Produto: "Pedido sem itens", Quantidade: 0,
+        "Preço unitário": 0, Subtotal: Number(pedido.subtotal ?? pedido.total), Desconto: Number(pedido.desconto_valor ?? 0),
+        Entrega: Number(pedido.taxa_entrega ?? 0), Total: Number(pedido.total), Status: STATUS_LABELS[pedido.status] ?? pedido.status,
+      }]
+      return pedido.pedido_itens.map((item) => ({
+        Pedido: pedido.id,
+        Data: dayjs(pedido.created_at).format("DD/MM/YYYY"),
+        Cliente: pedido.clientes?.nome ?? "",
+        Telefone: pedido.clientes?.telefone ?? "",
+        Produto: item.produto_snapshot?.nome ?? item.produtos?.nome ?? item.produto_id,
+        Quantidade: item.quantidade,
+        "Preço unitário": Number(item.preco_unitario),
+        "Total do item": Number(item.preco_unitario) * item.quantidade,
+        Subtotal: Number(pedido.subtotal ?? pedido.total),
+        Desconto: Number(pedido.desconto_valor ?? 0),
+        Entrega: Number(pedido.taxa_entrega ?? 0),
+        Total: Number(pedido.total),
+        Status: STATUS_LABELS[pedido.status] ?? pedido.status,
+        "Tipo de entrega": pedido.tipo_entrega === "retirada" ? "Retirada" : "Entrega",
+        "Comentário da decisão": pedido.decisao_comentario ?? "",
+      }))
+    })
+    const sheet = XLSX.utils.json_to_sheet(rows)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, sheet, "Pedidos")
+    XLSX.writeFile(workbook, `pedidos-${dayjs().format("YYYY-MM-DD")}.xlsx`)
+  }
+
   const columns: TableColumnsType<PedidoComCliente> = [
     { title: "Data", dataIndex: "created_at", width: 120, sorter: (a, b) => dayjs(a.created_at).valueOf() - dayjs(b.created_at).valueOf(), render: (value) => dayjs(value).format("DD/MM/YYYY") },
     { title: "Cliente", key: "cliente", width: 220, sorter: (a, b) => (a.clientes?.nome ?? "").localeCompare(b.clientes?.nome ?? ""), render: (_, pedido) => pedido.clientes?.nome ?? "—" },
@@ -206,7 +254,10 @@ export default function PedidosPage() {
         {pedido.observacao && <p><strong>Observação:</strong> {pedido.observacao}</p>}
         {pedido.decisao_comentario && <p className="text-red-700"><strong>Decisão:</strong> {pedido.decisao_comentario}</p>}
         <h4 className="font-semibold text-gray-900 pt-2">Itens</h4>
-        {pedido.pedido_itens.length ? pedido.pedido_itens.map((item) => <div key={item.id} className="flex justify-between gap-4"><span>{item.produtos?.nome ?? item.produto_id} × {item.quantidade}</span><span>{formatPrice(item.preco_unitario * item.quantidade)}</span></div>) : <p className="text-red-600">Pedido sem itens cadastrados</p>}
+        {pedido.pedido_itens.length ? pedido.pedido_itens.map((item) => <div key={item.id} className="flex items-center justify-between gap-4">
+          <span>{item.produto_snapshot?.nome ?? item.produtos?.nome ?? item.produto_id} × {item.quantidade}</span>
+          <span className="flex items-center gap-2"><span>{formatPrice(item.preco_unitario * item.quantidade)}</span><Button type="text" size="small" title="Ver detalhes do produto" icon={<Eye className="w-4 h-4" />} onClick={() => setProductDetail(item)} /></span>
+        </div>) : <p className="text-red-600">Pedido sem itens cadastrados</p>}
       </div>
       <div className="space-y-4">
         <div className="grid sm:grid-cols-2 gap-3">
@@ -222,9 +273,18 @@ export default function PedidosPage() {
   }
 
   const actionLabel = decision?.action === "cancelar" ? "Cancelar pedido" : decision?.action === "rejeitar" ? "Rejeitar pedido" : "Excluir pedido definitivamente"
+  const productInfo = productDetail ? { ...(productDetail.produtos ?? {}), ...(productDetail.produto_snapshot ?? {}) } : null
 
   return <div className="space-y-5">
-    <div><h1 className="text-2xl font-semibold text-gray-900">Pedidos</h1><p className="text-sm text-gray-500 mt-1">{filteredPedidos.length} pedido(s) encontrado(s)</p></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-semibold text-gray-900">Pedidos</h1><p className="text-sm text-gray-500 mt-1">{filteredPedidos.length} pedido(s) encontrado(s)</p></div><Button type="primary" icon={<FileSpreadsheet className="w-4 h-4" />} onClick={exportOrders}>Exportar Excel</Button></div>
+    <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
+      <Card size="small"><Statistic title="Pedidos" value={dashboard.total} prefix={<ShoppingCart className="w-4 h-4" />} /></Card>
+      <Card size="small"><Statistic title="Faturamento" value={dashboard.revenue} precision={2} prefix="R$" decimalSeparator="," groupSeparator="." /></Card>
+      <Card size="small"><Statistic title="Ticket médio" value={dashboard.average} precision={2} prefix="R$" decimalSeparator="," groupSeparator="." /></Card>
+      <Card size="small"><Statistic title="Aguardando" value={dashboard.pending} prefix={<CircleDollarSign className="w-4 h-4 text-amber-600" />} /></Card>
+      <Card size="small"><Statistic title="Entregues" value={dashboard.delivered} prefix={<PackageCheck className="w-4 h-4 text-green-600" />} /></Card>
+      <Card size="small"><Statistic title="Itens vendidos" value={dashboard.itemCount} /></Card>
+    </div>
     <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-wrap gap-3">
       <Search placeholder="Buscar cliente, telefone, e-mail ou ID" allowClear className="w-full md:w-80" onSearch={setSearch} onChange={(event) => setSearch(event.target.value)} />
       <Select allowClear placeholder="Status" className="w-48" value={statusFilter} onChange={setStatusFilter} options={STATUS_LIST.map((value) => ({ value, label: STATUS_LABELS[value] }))} />
@@ -237,10 +297,24 @@ export default function PedidosPage() {
         rowKey="id" columns={columns} dataSource={filteredPedidos} loading={loading}
         expandable={{ expandedRowRender: expandedRow }}
         pagination={{ defaultPageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], showTotal: (total) => `${total} pedidos` }}
-        scroll={{ x: 1100, y: "calc(100vh - 390px)" }}
+        scroll={{ x: 1100, y: "calc(100vh - 560px)" }}
         locale={{ emptyText: "Nenhum pedido encontrado" }}
       />
     </div>
+    <Modal title="Detalhes do produto no pedido" open={Boolean(productDetail)} footer={<Button onClick={() => setProductDetail(null)}>Fechar</Button>} onCancel={() => setProductDetail(null)} width={650}>
+      {productDetail && productInfo && <div className="grid sm:grid-cols-[180px_1fr] gap-5">
+        <div>{productInfo.foto_url ? <Image src={productInfo.foto_url} alt={productInfo.nome ?? "Produto"} className="rounded-lg" width={180} height={180} style={{ objectFit: "cover" }} /> : <div className="w-[180px] h-[180px] rounded-lg bg-gray-100 flex items-center justify-center text-gray-400">Sem foto</div>}</div>
+        <div className="space-y-3 text-sm">
+          <h3 className="text-lg font-semibold text-gray-900">{productInfo.nome ?? productDetail.produto_id}</h3>
+          {productInfo.categoria && <p><strong>Categoria:</strong> {productInfo.categoria}</p>}
+          {productInfo.descricao && <p className="text-gray-600">{productInfo.descricao}</p>}
+          <div className="grid grid-cols-2 gap-2"><p><strong>Quantidade:</strong> {productDetail.quantidade}</p><p><strong>Preço unitário:</strong> {formatPrice(productDetail.preco_unitario)}</p></div>
+          <p className="text-base"><strong>Total do item:</strong> {formatPrice(productDetail.preco_unitario * productDetail.quantidade)}</p>
+          {productInfo.itens && productInfo.itens.length > 0 && <div><strong>Composição vendida:</strong><ul className="list-disc pl-5 mt-1 text-gray-600">{productInfo.itens.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul></div>}
+          {productDetail.produto_snapshot && <Tag color="blue">Dados preservados no momento da compra</Tag>}
+        </div>
+      </div>}
+    </Modal>
     <Modal title={actionLabel} open={Boolean(decision)} okText={decision?.action === "excluir" ? "Excluir definitivamente" : "Confirmar decisão"} okButtonProps={{ danger: true }} confirmLoading={decisionLoading} onOk={confirmDecision} onCancel={() => { setDecision(null); setDecisionComment("") }}>
       <p className="mb-3 text-gray-600">Você pode adicionar um comentário. A decisão e o administrador responsável ficarão registrados no histórico.</p>
       {decision?.action === "excluir" && <p className="mb-3 font-medium text-red-600">A exclusão remove o pedido e seus itens da listagem e não pode ser desfeita.</p>}
