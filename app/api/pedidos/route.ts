@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
   const productIds = [...quantities.keys()];
   const { data: products, error: productsError } = await supabaseAdmin
-    .from("produtos").select("id, nome, preco, ativo").in("id", productIds);
+    .from("produtos").select("id, nome, descricao, preco, foto_url, categoria, itens, ativo").in("id", productIds);
   if (productsError) return NextResponse.json({ error: "Não foi possível consultar os produtos." }, { status: 500 });
   if (!products || products.length !== productIds.length || products.some((product) => !product.ativo)) {
     return NextResponse.json({ error: "Um ou mais produtos estão indisponíveis." }, { status: 409 });
@@ -44,6 +44,15 @@ export async function POST(request: NextRequest) {
     produto_id: product.id,
     quantidade: quantities.get(product.id)!,
     preco_unitario: Number(product.preco),
+    produto_snapshot: {
+      id: product.id,
+      nome: product.nome,
+      descricao: product.descricao,
+      preco: Number(product.preco),
+      foto_url: product.foto_url,
+      categoria: product.categoria,
+      itens: product.itens ?? [],
+    },
   }));
   const subtotal = orderItems.reduce((sum, item) => sum + item.quantidade * item.preco_unitario, 0);
   const deliveryFee = 0;
@@ -81,9 +90,14 @@ export async function POST(request: NextRequest) {
     .select("id").single();
   if (orderError || !order) return NextResponse.json({ error: "Não foi possível criar o pedido." }, { status: 500 });
 
-  const { error: itemsError } = await supabaseAdmin.from("pedido_itens").insert(
+  let { error: itemsError } = await supabaseAdmin.from("pedido_itens").insert(
     orderItems.map((item) => ({ ...item, pedido_id: order.id })),
   );
+  // Mantém o checkout funcionando durante a janela entre deploy e aplicação da migration.
+  if (itemsError?.message.includes("produto_snapshot")) {
+    const legacyItems = orderItems.map(({ produto_snapshot: _snapshot, ...item }) => ({ ...item, pedido_id: order.id }));
+    ({ error: itemsError } = await supabaseAdmin.from("pedido_itens").insert(legacyItems));
+  }
   if (itemsError) {
     await supabaseAdmin.from("pedidos").delete().eq("id", order.id);
     return NextResponse.json({ error: "Não foi possível salvar os itens do pedido." }, { status: 500 });

@@ -6,13 +6,14 @@ import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { LayoutDashboard, Package, ShoppingCart, Settings, LogOut, Menu, X, Tag, Users } from "lucide-react"
+import { LayoutDashboard, Package, ShoppingCart, Settings, LogOut, Menu, X, Tag, Users, WalletCards } from "lucide-react"
 
 const navItems = [
   { href: "/admin", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/admin/produtos", icon: Package, label: "Produtos" },
   { href: "/admin/categorias", icon: Tag, label: "Categorias" },
   { href: "/admin/pedidos", icon: ShoppingCart, label: "Pedidos" },
+  { href: "/admin/financeiro", icon: WalletCards, label: "Financeiro" },
   { href: "/admin/usuarios", icon: Users, label: "Usuários" },
   { href: "/admin/configuracoes", icon: Settings, label: "Configurações" },
 ]

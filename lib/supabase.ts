@@ -61,9 +61,18 @@ export type PedidoItem = {
   produto_id: string;
   quantidade: number;
   preco_unitario: number;
+  produto_snapshot?: {
+    id?: string;
+    nome?: string;
+    descricao?: string;
+    preco?: number;
+    foto_url?: string;
+    categoria?: string;
+    itens?: string[];
+  };
 };
 
 export type PedidoComCliente = Pedido & {
   clientes: Pick<Cliente, 'nome' | 'telefone' | 'email'> | null;
-  pedido_itens: (PedidoItem & { produtos: Pick<Produto, 'nome' | 'preco'> | null })[];
+  pedido_itens: (PedidoItem & { produtos: Pick<Produto, 'nome' | 'preco' | 'descricao' | 'foto_url' | 'categoria' | 'itens'> | null })[];
 };
